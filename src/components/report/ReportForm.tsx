@@ -6,29 +6,30 @@ import { collection, addDoc, Timestamp } from "firebase/firestore";
 
 export default function ReportForm() {
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("Road Damage");
   const [description, setDescription] = useState("");
+  const [image, setImage] = useState<File | null>(null);
 
-  const handleSubmit = async (e?: any) => {
-    if (e) e.preventDefault();
-
-    console.log("BUTTON CLICKED");
-
+  const handleSubmit = async () => {
     try {
-      const docRef = await addDoc(collection(db, "reports"), {
-        title: title,
-        description: description,
+      await addDoc(collection(db, "reports"), {
+        title,
+        category,
+        description,
+        imageName: image ? image.name : null,
         status: "pending",
         createdAt: Timestamp.now(),
       });
 
-      console.log("SUCCESS:", docRef.id);
-
       alert("Report submitted successfully!");
 
       setTitle("");
+      setCategory("Road Damage");
       setDescription("");
+      setImage(null);
+
     } catch (error) {
-      console.error("FIREBASE ERROR:", error);
+      console.error(error);
       alert("Failed to submit report");
     }
   };
@@ -59,6 +60,24 @@ export default function ReportForm() {
 
           <div>
             <label className="block mb-2 text-sm text-slate-400">
+              Category
+            </label>
+
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full bg-[#0b1220] border border-slate-700 rounded-xl p-4 outline-none"
+            >
+              <option>Road Damage</option>
+              <option>Garbage</option>
+              <option>Street Light</option>
+              <option>Water Leakage</option>
+              <option>Electricity</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block mb-2 text-sm text-slate-400">
               Description
             </label>
 
@@ -67,6 +86,23 @@ export default function ReportForm() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full bg-[#0b1220] border border-slate-700 rounded-xl p-4 h-32 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-2 text-sm text-slate-400">
+              Upload Image
+            </label>
+
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setImage(e.target.files[0]);
+                }
+              }}
+              className="w-full bg-[#0b1220] border border-slate-700 rounded-xl p-3 text-white"
             />
           </div>
 
