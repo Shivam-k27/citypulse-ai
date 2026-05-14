@@ -24,6 +24,10 @@ interface Report {
 export default function DashboardPage() {
   const [reports, setReports] = useState<Report[]>([]);
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
   const updateStatus = async (
     id: string,
     newStatus: string
@@ -90,6 +94,27 @@ export default function DashboardPage() {
     fetchReports();
   }, []);
 
+  const filteredReports = reports.filter((report) => {
+    const matchesSearch =
+      report.title
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+
+    const matchesStatus =
+      statusFilter === "all" ||
+      report.status === statusFilter;
+
+    const matchesCategory =
+      categoryFilter === "all" ||
+      report.category === categoryFilter;
+
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesCategory
+    );
+  });
+
   return (
     <main className="min-h-screen bg-[#0a0f1e] text-white p-8">
 
@@ -99,9 +124,73 @@ export default function DashboardPage() {
           Admin Dashboard
         </h1>
 
+        <div className="grid md:grid-cols-3 gap-4 mb-8">
+
+          <input
+            type="text"
+            placeholder="Search reports..."
+            value={searchTerm}
+            onChange={(e) =>
+              setSearchTerm(e.target.value)
+            }
+            className="bg-[#111827] border border-slate-700 rounded-xl p-4 outline-none"
+          />
+
+          <select
+            value={statusFilter}
+            onChange={(e) =>
+              setStatusFilter(e.target.value)
+            }
+            className="bg-[#111827] border border-slate-700 rounded-xl p-4 outline-none"
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="in progress">
+              In Progress
+            </option>
+            <option value="resolved">
+              Resolved
+            </option>
+          </select>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) =>
+              setCategoryFilter(e.target.value)
+            }
+            className="bg-[#111827] border border-slate-700 rounded-xl p-4 outline-none"
+          >
+            <option value="all">
+              All Categories
+            </option>
+
+            <option value="Road Damage">
+              Road Damage
+            </option>
+
+            <option value="Garbage">
+              Garbage
+            </option>
+
+            <option value="Street Light">
+              Street Light
+            </option>
+
+            <option value="Water Leakage">
+              Water Leakage
+            </option>
+
+            <option value="Electricity">
+              Electricity
+            </option>
+
+          </select>
+
+        </div>
+
         <div className="grid gap-6">
 
-          {reports.map((report) => (
+          {filteredReports.map((report) => (
             <div
               key={report.id}
               className="bg-[#111827] border border-slate-800 rounded-2xl p-6"
