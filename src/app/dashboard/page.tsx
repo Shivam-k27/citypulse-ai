@@ -7,6 +7,8 @@ import {
   getDocs,
   orderBy,
   query,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 
 interface Report {
@@ -20,6 +22,30 @@ interface Report {
 export default function DashboardPage() {
   const [reports, setReports] = useState<Report[]>([]);
 
+  const updateStatus = async (
+    id: string,
+    newStatus: string
+  ) => {
+    try {
+      const reportRef = doc(db, "reports", id);
+
+      await updateDoc(reportRef, {
+        status: newStatus,
+      });
+
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === id
+            ? { ...report, status: newStatus }
+            : report
+        )
+      );
+
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
     const fetchReports = async () => {
       try {
@@ -32,10 +58,10 @@ export default function DashboardPage() {
 
         const reportsData: Report[] = [];
 
-        querySnapshot.forEach((doc) => {
+        querySnapshot.forEach((docItem) => {
           reportsData.push({
-            id: doc.id,
-            ...(doc.data() as Omit<Report, "id">),
+            id: docItem.id,
+            ...(docItem.data() as Omit<Report, "id">),
           });
         });
 
@@ -84,6 +110,38 @@ export default function DashboardPage() {
               <p className="text-slate-300">
                 {report.description}
               </p>
+
+              <div className="flex gap-3 mt-5">
+
+                <button
+                  onClick={() =>
+                    updateStatus(report.id, "pending")
+                  }
+                  className="bg-yellow-500 px-4 py-2 rounded-lg text-black font-medium"
+                >
+                  Pending
+                </button>
+
+                <button
+                  onClick={() =>
+                    updateStatus(report.id, "in progress")
+                  }
+                  className="bg-blue-500 px-4 py-2 rounded-lg font-medium"
+                >
+                  In Progress
+                </button>
+
+                <button
+                  onClick={() =>
+                    updateStatus(report.id, "resolved")
+                  }
+                  className="bg-green-500 px-4 py-2 rounded-lg font-medium"
+                >
+                  Resolved
+                </button>
+
+              </div>
+
             </div>
           ))}
 
