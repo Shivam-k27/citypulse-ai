@@ -13,6 +13,18 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+} from "recharts";
+
 interface Report {
   id: string;
   title: string;
@@ -115,6 +127,48 @@ export default function DashboardPage() {
     );
   });
 
+  const statusData = [
+    {
+      name: "Pending",
+      value: reports.filter(
+        (r) => r.status === "pending"
+      ).length,
+    },
+    {
+      name: "In Progress",
+      value: reports.filter(
+        (r) => r.status === "in progress"
+      ).length,
+    },
+    {
+      name: "Resolved",
+      value: reports.filter(
+        (r) => r.status === "resolved"
+      ).length,
+    },
+  ];
+
+  const categoryData = [
+    {
+      name: "Road",
+      value: reports.filter(
+        (r) => r.category === "Road Damage"
+      ).length,
+    },
+    {
+      name: "Garbage",
+      value: reports.filter(
+        (r) => r.category === "Garbage"
+      ).length,
+    },
+    {
+      name: "Street Light",
+      value: reports.filter(
+        (r) => r.category === "Street Light"
+      ).length,
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-[#0a0f1e] text-white p-8">
 
@@ -123,6 +177,133 @@ export default function DashboardPage() {
         <h1 className="text-5xl font-bold mb-10">
           Admin Dashboard
         </h1>
+
+        <div className="grid md:grid-cols-4 gap-4 mb-8">
+
+          <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800">
+            <p className="text-slate-400 text-sm mb-2">
+              Total Reports
+            </p>
+
+            <h2 className="text-4xl font-bold">
+              {reports.length}
+            </h2>
+          </div>
+
+          <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800">
+            <p className="text-slate-400 text-sm mb-2">
+              Pending
+            </p>
+
+            <h2 className="text-4xl font-bold text-yellow-400">
+              {
+                reports.filter(
+                  (report) =>
+                    report.status === "pending"
+                ).length
+              }
+            </h2>
+          </div>
+
+          <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800">
+            <p className="text-slate-400 text-sm mb-2">
+              In Progress
+            </p>
+
+            <h2 className="text-4xl font-bold text-blue-400">
+              {
+                reports.filter(
+                  (report) =>
+                    report.status === "in progress"
+                ).length
+              }
+            </h2>
+          </div>
+
+          <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800">
+            <p className="text-slate-400 text-sm mb-2">
+              Resolved
+            </p>
+
+            <h2 className="text-4xl font-bold text-green-400">
+              {
+                reports.filter(
+                  (report) =>
+                    report.status === "resolved"
+                ).length
+              }
+            </h2>
+          </div>
+
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+
+          <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800">
+
+            <h2 className="text-2xl font-semibold mb-6">
+              Report Status
+            </h2>
+
+            <div className="h-[300px]">
+
+              <ResponsiveContainer width="100%" height="100%">
+
+                <PieChart>
+
+                  <Pie
+                    data={statusData}
+                    dataKey="value"
+                    outerRadius={100}
+                    label
+                  >
+                    <Cell fill="#eab308" />
+                    <Cell fill="#3b82f6" />
+                    <Cell fill="#22c55e" />
+                  </Pie>
+
+                  <Tooltip />
+
+                </PieChart>
+
+              </ResponsiveContainer>
+
+            </div>
+
+          </div>
+
+          <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800">
+
+            <h2 className="text-2xl font-semibold mb-6">
+              Categories
+            </h2>
+
+            <div className="h-[300px]">
+
+              <ResponsiveContainer width="100%" height="100%">
+
+                <BarChart data={categoryData}>
+
+                  <XAxis dataKey="name" />
+
+                  <YAxis />
+
+                  <Tooltip />
+
+                  <Bar
+                    dataKey="value"
+                    fill="#3b82f6"
+                  />
+
+                </BarChart>
+
+              </ResponsiveContainer>
+
+            </div>
+
+          </div>
+
+        </div>
 
         <div className="grid md:grid-cols-3 gap-4 mb-8">
 

@@ -1,10 +1,12 @@
 import ReportForm from "@/components/report/ReportForm";
 
 export default function ReportPage() {
+
   return (
+
     <main className="min-h-screen bg-[#0a0f1e] text-white px-6 py-16">
 
-      <div className="max-w-5xl mx-auto mb-12">
+      <div className="max-w-5xl mx-auto text-center mb-12">
 
         <h1 className="text-6xl font-bold mb-6">
           Report an Issue
@@ -20,5 +22,6 @@ export default function ReportPage() {
       <ReportForm />
 
     </main>
+
   );
 }
