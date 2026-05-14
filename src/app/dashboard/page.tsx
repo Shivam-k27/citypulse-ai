@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
+
 import {
   collection,
   getDocs,
@@ -9,6 +10,7 @@ import {
   query,
   doc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 
 interface Report {
@@ -39,6 +41,19 @@ export default function DashboardPage() {
             ? { ...report, status: newStatus }
             : report
         )
+      );
+
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const deleteReport = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "reports", id));
+
+      setReports((prev) =>
+        prev.filter((report) => report.id !== id)
       );
 
     } catch (error) {
@@ -111,7 +126,7 @@ export default function DashboardPage() {
                 {report.description}
               </p>
 
-              <div className="flex gap-3 mt-5">
+              <div className="flex gap-3 mt-5 flex-wrap">
 
                 <button
                   onClick={() =>
@@ -138,6 +153,15 @@ export default function DashboardPage() {
                   className="bg-green-500 px-4 py-2 rounded-lg font-medium"
                 >
                   Resolved
+                </button>
+
+                <button
+                  onClick={() =>
+                    deleteReport(report.id)
+                  }
+                  className="bg-red-500 px-4 py-2 rounded-lg font-medium"
+                >
+                  Delete
                 </button>
 
               </div>
