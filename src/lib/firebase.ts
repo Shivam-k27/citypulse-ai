@@ -1,19 +1,20 @@
-import { getStorage } from "firebase/storage";
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage"; // 1. Added storage import
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAR4187NeGtQuFbFXIRUfMhgE6knNZQuSA",
-  authDomain: "citypulse-ai-c314f.firebaseapp.com",
-  projectId: "citypulse-ai-c314f",
-  storageBucket: "citypulse-ai-c314f.firebasestorage.app",
-  messagingSenderId: "606113959349",
-  appId: "1:606113959349:web:ecb53eae9728615438ddfc",
+  apiKey: "AIzaSyDwEJJjxqHTKIjPMf1i7JmOjcB4kmL_tCI",
+  authDomain: "city-pluse-final.firebaseapp.com",
+  projectId: "city-pluse-final",
+  storageBucket: "city-pluse-final.firebasestorage.app",
+  messagingSenderId: "877267962587",
+  appId: "1:877267962587:web:ba3b39686dc9f7ae4b9afe"
 };
+
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const storage = getStorage(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app); // 2. Added storage export
