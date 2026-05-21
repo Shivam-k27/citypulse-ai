@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { onAuthStateChanged } from "firebase/auth";
@@ -27,7 +27,6 @@ import {
   Map as MapIcon
 } from "lucide-react";
 
-// Pointing directly to the default export of your LiveMap component
 const LazyLiveMap = dynamic(
   () => import("@/components/report/LiveMap").then((mod) => mod.default),
   {
@@ -45,6 +44,10 @@ export default function CitizenDashboard() {
   const [allPublicReports, setAllPublicReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // References to preserve baseline application state across snapshot evaluations
+  const isFirstLoad = useRef(true); 
+  const previousStatuses = useRef<{ [key: string]: string }>({});
+
   const handleUpvote = async (reportId: string, upvotes: string[]) => {
     const user = auth.currentUser;
     if (!user) {
@@ -60,11 +63,18 @@ export default function CitizenDashboard() {
         upvotes: hasUpvoted ? arrayRemove(user.uid) : arrayUnion(user.uid)
       });
     } catch (err) {
-      console.error("Error updating upvote:", err);
+      console.error("Error executing vote modification:", err);
     }
   };
 
   useEffect(() => {
+    // Request permission to send system push notifications on mount
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         const qUser = query(
@@ -74,12 +84,49 @@ export default function CitizenDashboard() {
         );
         const qPublic = query(collection(db, "reports"), orderBy("createdAt", "desc"));
 
+        // Establish real-time data stream binding
         const unsubUser = onSnapshot(qUser, (snapshot) => {
-          setReports(snapshot.docs.map(doc => ({ 
+          const currentReports = snapshot.docs.map(doc => ({ 
             id: doc.id, 
             ...doc.data(), 
             upvotes: doc.data().upvotes || [] 
-          })));
+          }));
+
+          // Process delta mutations for system notifications
+          currentReports.forEach((report) => {
+            const reportId = report.id;
+            const currentStatus = report.status || "Pending";
+            const oldStatus = previousStatuses.current[reportId];
+
+            // If a status modifies post-initial load, trigger native notification dispatch
+            if (!isFirstLoad.current && oldStatus && oldStatus !== currentStatus) {
+              if (Notification.permission === "granted") {
+                const systemAlert = new Notification("CityPulse Status Update", {
+                  body: `Your issue "${report.title}" has been updated to: ${currentStatus}`,
+                  icon: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+                  tag: reportId, // Prevents duplicate instances for the same change event
+                });
+
+                // Auto-focus window and scroll to submissions section on interaction
+                systemAlert.onclick = () => {
+                  window.focus();
+                  const targetElement = document.getElementById("submissions-list");
+                  if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                };
+              }
+            }
+
+            // Commit state parameters to baseline lookup ref
+            previousStatuses.current[reportId] = currentStatus;
+          });
+
+          if (isFirstLoad.current) {
+            isFirstLoad.current = false;
+          }
+
+          setReports(currentReports);
           setLoading(false);
         });
 
@@ -168,7 +215,7 @@ export default function CitizenDashboard() {
         <LazyLiveMap />
       </section>
 
-      <section className="mt-14">
+      <section id="submissions-list" className="mt-14 scroll-mt-6">
         <h2 className="text-3xl font-bold mb-8 tracking-tight">My Submissions</h2>
         <div className="space-y-6">
           {reports.length > 0 ? reports.map((report) => {

@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { db, auth } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
 import {
   collection,
   onSnapshot,
@@ -12,19 +10,10 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  getDoc,
 } from "firebase/firestore";
-
 import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
 } from "recharts";
 
 interface Report {
@@ -33,288 +22,286 @@ interface Report {
   category: string;
   description: string;
   status: string;
-  address?: string;
-  latitude?: number;
-  longitude?: number;
-  imageUrl?: string;
-  upvotes?: string[]; // Community votes array
+  Location?: { lat: number; lng: number; address?: string };
+  createdAt?: any;
 }
 
-export default function DashboardPage() {
-  const router = useRouter();
+export default function AdminDashboard() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Status");
+  const [categoryFilter, setCategoryFilter] = useState("All Categories");
 
   useEffect(() => {
-    // 🛡️ Security Guard: Only admins allowed
-    const checkAdminAccess = async (user: any) => {
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-      
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (!userDoc.exists() || userDoc.data().role !== "admin") {
-        router.push("/citizen"); 
-      } else {
-        setLoading(false);
-      }
+    let unsubscribe: () => void;
+
+    const trySubscribe = (withOrder: boolean) => {
+      const base = collection(db, "reports");
+      const q = withOrder
+        ? query(base, orderBy("createdAt", "desc"))
+        : query(base);
+
+      unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const data = snapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          })) as Report[];
+
+          if (!withOrder) {
+            data.sort((a, b) => {
+              const ta = a.createdAt?.toMillis?.() ?? 0;
+              const tb = b.createdAt?.toMillis?.() ?? 0;
+              return tb - ta;
+            });
+          }
+
+          setReports(data);
+          setLoading(false);
+          setError(null);
+        },
+        (err) => {
+          console.error("Firestore query error:", err);
+          if (withOrder) {
+            trySubscribe(false); // retry without orderBy
+          } else {
+            setError("Failed to load reports. Check Firestore rules/indexes.");
+            setLoading(false);
+          }
+        }
+      );
     };
 
-    const authUnsubscribe = onAuthStateChanged(auth, checkAdminAccess);
+    trySubscribe(true);
+    return () => unsubscribe?.();
+  }, []);
 
-    // 🚀 PRIORITY QUERY: Sort by upvotes (community importance) then date
-    // Note: You might need to click the link in your console to build this index!
-    const q = query(
-      collection(db, "reports"), 
-      orderBy("upvotes", "desc"), 
-      orderBy("createdAt", "desc")
-    );
-
-    const snapUnsubscribe = onSnapshot(q, (snapshot) => {
-      const reportsData = snapshot.docs.map((docItem) => ({
-        id: docItem.id,
-        ...(docItem.data() as Omit<Report, "id">),
-        upvotes: docItem.data().upvotes || [] // Fallback to empty array
-      }));
-      setReports(reportsData);
-    }, (error) => {
-      console.error("Firebase sync failed:", error);
-    });
-
-    return () => {
-      authUnsubscribe();
-      snapUnsubscribe();
-    };
-  }, [router]);
-
-  // Handler for status toggle buttons
-  const updateStatus = async (id: string, newStatus: string) => {
+  const handleStatusChange = async (id: string, newStatus: string) => {
     try {
-      const reportRef = doc(db, "reports", id);
-      await updateDoc(reportRef, { status: newStatus });
-    } catch (error) {
-      alert("Failed to update status. Check permissions.");
+      await updateDoc(doc(db, "reports", id), { status: newStatus.toLowerCase() });
+    } catch (err) {
+      console.error("Error updating status:", err);
     }
   };
 
-  const deleteReport = async (id: string) => {
-    if (!window.confirm("This is permanent. You sure?")) return;
-    try {
-      await deleteDoc(doc(db, "reports", id));
-    } catch (error) {
-      alert("Delete failed.");
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this report?")) {
+      try {
+        await deleteDoc(doc(db, "reports", id));
+      } catch (err) {
+        console.error("Error deleting report:", err);
+      }
     }
   };
 
-  // Filter logic for the search and dropdowns
+  const totalReports = reports.length;
+  const pendingCount = reports.filter((r) => r.status?.toLowerCase() === "pending").length;
+  const inProgressCount = reports.filter((r) => r.status?.toLowerCase() === "in progress").length;
+  const resolvedCount = reports.filter((r) => r.status?.toLowerCase() === "resolved").length;
+
+  const pieData = [
+    { name: "Pending", value: pendingCount, color: "#eab308" },
+    { name: "In Progress", value: inProgressCount, color: "#3b82f6" },
+    { name: "Resolved", value: resolvedCount, color: "#22c55e" },
+  ];
+
+  const categories = ["Road Damage", "Garbage", "Water Leakage", "Street Light", "Electricity"];
+  const barData = categories.map((cat) => ({
+    name: cat,
+    count: reports.filter((r) => r.category?.toLowerCase() === cat.toLowerCase()).length,
+  }));
+
   const filteredReports = reports.filter((report) => {
-    const matchesSearch = report.title?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || report.status?.toLowerCase() === statusFilter.toLowerCase();
-    const matchesCategory = categoryFilter === "all" || report.category === categoryFilter;
+    const matchesSearch =
+      report.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus =
+      statusFilter === "All Status" ||
+      report.status?.toLowerCase() === statusFilter.toLowerCase();
+    const matchesCategory =
+      categoryFilter === "All Categories" ||
+      report.category?.toLowerCase() === categoryFilter.toLowerCase();
     return matchesSearch && matchesStatus && matchesCategory;
   });
 
-  // Re-calculating stats for the charts
-  const statusData = useMemo(() => [
-    { name: "Pending", value: reports.filter((r) => r.status?.toLowerCase() === "pending").length },
-    { name: "In Progress", value: reports.filter((r) => r.status?.toLowerCase() === "in progress").length },
-    { name: "Resolved", value: reports.filter((r) => r.status?.toLowerCase() === "resolved").length },
-  ], [reports]);
-
-  const categoryData = useMemo(() => [
-    { name: "Road", value: reports.filter((r) => r.category === "Road Damage").length },
-    { name: "Garbage", value: reports.filter((r) => r.category === "Garbage").length },
-    { name: "Light", value: reports.filter((r) => r.category === "Street Light").length },
-    { name: "Water", value: reports.filter((r) => r.category === "Water Leakage").length },
-  ], [reports]);
+  const buildMapUrl = (lat: number, lng: number) => {
+    const delta = 0.01;
+    const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0f1e] flex flex-col items-center justify-center text-white font-black">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="tracking-widest uppercase text-xs">Accessing Command Center...</p>
+      <div className="min-h-screen bg-[#070d19] text-white flex items-center justify-center">
+        <p className="animate-pulse tracking-wider font-semibold">Loading Administrative Dashboard...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#070d19] text-white flex items-center justify-center">
+        <p className="text-red-400 font-semibold">{error}</p>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] text-white p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-10">
-          <h1 className="text-4xl font-bold tracking-tight">Admin Dashboard</h1>
-          <button 
-            onClick={() => auth.signOut()} 
-            className="bg-red-500/10 text-red-400 border border-red-500/20 px-5 py-2 rounded-xl hover:bg-red-600 hover:text-white transition-all font-medium"
-          >
-            Sign Out
-          </button>
-        </div>
+    <main className="min-h-screen bg-[#070d19] text-white p-6 md:p-10">
+      <div className="max-w-7xl mx-auto space-y-8">
 
-        {/* Quick Stats Grid */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-[#111827] p-6 rounded-3xl border border-slate-800 shadow-xl">
-            <p className="text-slate-400 text-sm mb-1 uppercase font-bold tracking-widest text-[10px]">Total Reports</p>
-            <h2 className="text-4xl font-bold">{reports.length}</h2>
-          </div>
-          {statusData.map((status) => (
-            <div key={status.name} className="bg-[#111827] p-6 rounded-3xl border border-slate-800 shadow-xl">
-              <p className="text-slate-400 text-sm mb-1 uppercase font-bold tracking-widest text-[10px]">{status.name}</p>
-              <h2 className={`text-4xl font-bold ${
-                status.name === 'Pending' ? 'text-yellow-400' : 
-                status.name === 'In Progress' ? 'text-blue-400' : 'text-green-400'
-              }`}>
-                {status.value}
-              </h2>
+        <h1 className="text-4xl font-extrabold tracking-tight">Admin Dashboard</h1>
+
+        {/* STAT COUNTERS */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: "Total Reports", value: totalReports, color: "text-white" },
+            { label: "Pending", value: pendingCount, color: "text-yellow-500" },
+            { label: "In Progress", value: inProgressCount, color: "text-blue-500" },
+            { label: "Resolved", value: resolvedCount, color: "text-green-500" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-[#0f172a] border border-slate-800 rounded-xl p-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</h3>
+              <p className={`text-3xl font-bold mt-2 ${color}`}>{value}</p>
             </div>
           ))}
-        </div>
+        </section>
 
-        {/* Visual Analytics */}
-        <div className="grid md:grid-cols-2 gap-6 mb-10">
-          <div className="bg-[#111827] p-6 rounded-3xl border border-slate-800">
-            <h2 className="text-xl font-semibold mb-6">Live Status</h2>
-            <div className="h-[280px]">
+        {/* CHARTS */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-[#0f172a] border border-slate-800 rounded-xl p-6 h-80 flex flex-col">
+            <h3 className="text-lg font-bold mb-4">Report Status</h3>
+            <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={statusData} dataKey="value" outerRadius={90} stroke="none">
-                    <Cell fill="#eab308" />
-                    <Cell fill="#3b82f6" />
-                    <Cell fill="#22c55e" />
+                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
+                    {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '15px', backgroundColor: '#111827', border: '1px solid #1e293b' }} />
+                  <Tooltip />
+                  <Legend />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="bg-[#111827] p-6 rounded-3xl border border-slate-800">
-            <h2 className="text-xl font-semibold mb-6">Category Distribution</h2>
-            <div className="h-[280px]">
+          <div className="bg-[#0f172a] border border-slate-800 rounded-xl p-6 h-80 flex flex-col">
+            <h3 className="text-lg font-bold mb-4">Categories</h3>
+            <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={categoryData}>
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis hide />
-                  <Tooltip cursor={{fill: '#1f2937'}} contentStyle={{ borderRadius: '15px', backgroundColor: '#111827', border: 'none' }} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                <BarChart data={barData}>
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={11} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Filtering & Search Bar */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
+        {/* FILTERS */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <input
             type="text"
             placeholder="Search reports..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="bg-[#111827] border border-slate-800 rounded-2xl p-4 outline-none focus:ring-2 ring-blue-500/50 transition-all"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-[#0f172a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition-colors w-full"
           />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-[#111827] border border-slate-800 rounded-2xl p-4 outline-none"
+            className="bg-[#0f172a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-300 focus:outline-none focus:border-blue-500 transition-colors w-full"
           >
-            <option value="all">Filter: All Status</option>
-            <option value="pending">Pending</option>
-            <option value="in progress">In Progress</option>
-            <option value="resolved">Resolved</option>
+            <option>All Status</option>
+            <option>Pending</option>
+            <option>In Progress</option>
+            <option>Resolved</option>
           </select>
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-[#111827] border border-slate-800 rounded-2xl p-4 outline-none"
+            className="bg-[#0f172a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-300 focus:outline-none focus:border-blue-500 transition-colors w-full"
           >
-            <option value="all">Filter: All Categories</option>
-            <option value="Road Damage">Road Damage</option>
-            <option value="Garbage">Garbage Issues</option>
-            <option value="Street Light">Street Lighting</option>
-            <option value="Water Leakage">Water/Plumbing</option>
+            <option>All Categories</option>
+            {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
-        </div>
+        </section>
 
-        {/* Priority Feed */}
-        <div className="grid gap-6">
-          {filteredReports.map((report) => (
-            <div key={report.id} className="bg-[#111827] border border-slate-800 rounded-[32px] p-8 hover:border-slate-600 transition-all shadow-xl group">
-              <div className="flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-3xl font-bold group-hover:text-blue-400 transition-colors">{report.title}</h2>
-                    {/* 📊 Priority Badge */}
-                    <div className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 border border-blue-600/20 uppercase tracking-tighter">
-                      <span>▲</span> {report.upvotes?.length || 0} Priority Votes
-                    </div>
+        {/* REPORTS LIST */}
+        <section className="space-y-4">
+          {filteredReports.length > 0 ? filteredReports.map((report) => {
+            const lat = report.Location?.lat ?? 25.5941;
+            const lng = report.Location?.lng ?? 85.1234;
+
+            return (
+              <div key={report.id} className="bg-[#0f172a] border border-slate-800 rounded-xl p-6 space-y-4">
+                <div className="flex justify-between items-start gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight text-slate-100 capitalize">{report.title}</h2>
+                    <p className="text-xs text-blue-400 font-medium uppercase tracking-wider mt-1">{report.category}</p>
                   </div>
-                  <p className="text-blue-500 text-xs font-black uppercase tracking-widest">{report.category}</p>
+                  <span className={`px-2.5 py-1 rounded text-xs font-mono font-bold uppercase border ${
+                    report.status?.toLowerCase() === "resolved" ? "bg-green-500/10 border-green-500/20 text-green-400" :
+                    report.status?.toLowerCase() === "in progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-400" :
+                    "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                  }`}>
+                    {report.status || "pending"}
+                  </span>
                 </div>
-                <span className={`px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest ${
-                  report.status?.toLowerCase() === 'resolved' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                  report.status?.toLowerCase() === 'in progress' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                  'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-                }`}>
-                  {report.status}
-                </span>
-              </div>
 
-              <p className="text-slate-400 mb-6 leading-relaxed text-sm">{report.description}</p>
-              
-              <div className="flex items-center gap-2 text-slate-500 text-xs mb-8">
-                <span className="bg-slate-800 p-1.5 rounded-lg">📍</span>
-                {report.address || "Location not provided"}
-              </div>
+                <p className="text-sm text-slate-400 leading-relaxed">{report.description}</p>
 
-              {report.imageUrl && (
-                <div className="mb-8">
-                  <img 
-                    src={report.imageUrl} 
-                    alt="Citizen Evidence" 
-                    className="w-full h-[450px] object-cover rounded-[24px] border border-slate-800" 
-                  />
+                {report.Location?.address && (
+                  <p className="text-xs text-slate-400 flex items-center gap-1">
+                    📍 <span className="text-slate-500">Address:</span> {report.Location.address}
+                  </p>
+                )}
+
+                {/* ✅ FIXED: OpenStreetMap embed — no API key needed, works in all browsers */}
+                {report.Location && (
+                  <div className="w-full h-64 rounded-xl border border-slate-800/80 overflow-hidden shadow-inner">
+                    <iframe
+                      title={`Map for ${report.title}`}
+                      width="100%"
+                      height="100%"
+                      className="border-none"
+                      loading="lazy"
+                      src={buildMapUrl(lat, lng)}
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-800/40">
+                  <button onClick={() => handleStatusChange(report.id, "pending")}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold text-xs px-4 py-2 rounded-lg transition-colors">
+                    Pending
+                  </button>
+                  <button onClick={() => handleStatusChange(report.id, "in progress")}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors">
+                    In Progress
+                  </button>
+                  <button onClick={() => handleStatusChange(report.id, "resolved")}
+                    className="bg-green-600 hover:bg-green-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors">
+                    Resolved
+                  </button>
+                  <button onClick={() => handleDelete(report.id)}
+                    className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors sm:ml-auto">
+                    Delete
+                  </button>
                 </div>
-              )}
-
-              {/* Action Toolbar */}
-              <div className="flex gap-3 flex-wrap border-t border-slate-800/50 pt-8">
-                <button 
-                  onClick={() => updateStatus(report.id, "pending")} 
-                  className="bg-yellow-500/10 text-yellow-500 px-6 py-2.5 rounded-xl hover:bg-yellow-500 hover:text-black transition-all text-xs font-bold uppercase tracking-widest"
-                >
-                  Set Pending
-                </button>
-                <button 
-                  onClick={() => updateStatus(report.id, "in progress")} 
-                  className="bg-blue-500/10 text-blue-500 px-6 py-2.5 rounded-xl hover:bg-blue-500 hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
-                >
-                  Start Working
-                </button>
-                <button 
-                  onClick={() => updateStatus(report.id, "resolved")} 
-                  className="bg-green-500/10 text-green-500 px-6 py-2.5 rounded-xl hover:bg-green-500 hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
-                >
-                  Resolve
-                </button>
-                <button 
-                  onClick={() => deleteReport(report.id)} 
-                  className="bg-red-500/10 text-red-500 px-6 py-2.5 rounded-xl hover:bg-red-600 hover:text-white transition-all text-xs font-bold uppercase tracking-widest ml-auto"
-                >
-                  Remove
-                </button>
               </div>
-            </div>
-          ))}
-          
-          {filteredReports.length === 0 && (
-            <div className="text-center py-24 bg-[#111827] rounded-[32px] border border-dashed border-slate-800">
-              <p className="text-slate-500 font-medium">No reports matches your search criteria.</p>
+            );
+          }) : (
+            <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl text-slate-500 text-sm">
+              No matching records found.
             </div>
           )}
-        </div>
+        </section>
+
       </div>
     </main>
   );
